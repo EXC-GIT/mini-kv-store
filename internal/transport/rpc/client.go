@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"net"
 	"time"
 
 	common "github.com/exc-git/mini-kv-store/internal/common"
@@ -17,10 +18,14 @@ type Client struct {
 
 // NewClient creates a new gRPC client
 func NewClient(addr string) (*Client, error) {
-	conn, err := grpc.Dial(addr,
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp", addr)
+		}),
 	)
 	if err != nil {
 		return nil, err
