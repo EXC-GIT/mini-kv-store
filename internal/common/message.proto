@@ -1,0 +1,22 @@
+syntax = "proto3";
+package common;
+
+option go_package = "github.com/exc-git/mini-kv-store/internal/common";
+
+message JoinRequest {
+  string node_id = 1;
+  string raft_address = 2;
+}
+
+message JoinResponse {
+  bool success = 1;
+}
+
+message StatsRequest {}
+
+message StatsResponse {
+  string leader = 1;
+  repeated string nodes = 2;
+  uint64 commit_index = 3;
+  uint64 last_applied = 4;
+}
