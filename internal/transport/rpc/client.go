@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	common "github.com/exc-git/mini-kv-store/internal/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -68,13 +69,13 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 }
 
 // Stats returns cluster statistics
-func (c *Client) Stats(ctx context.Context) (*StatsResponse, error) {
-	return c.client.Stats(ctx, &StatsRequest{})
+func (c *Client) Stats(ctx context.Context) (*common.StatsResponse, error) {
+	return c.client.Stats(ctx, &common.StatsRequest{})
 }
 
 // Join adds a node to the cluster
 func (c *Client) Join(ctx context.Context, nodeID, raftAddr string) error {
-	_, err := c.client.Join(ctx, &JoinRequest{
+	_, err := c.client.Join(ctx, &common.JoinRequest{
 		NodeId:      nodeID,
 		RaftAddress: raftAddr,
 	})

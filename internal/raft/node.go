@@ -15,14 +15,13 @@ type Node struct {
 	*raft.Raft
 }
 
-func NewNode(config *raft.Config, fsm raft.FSM, logStore raft.LogStore,
-	stableStore raft.StableStore, snapshots raft.SnapshotStore,
-	transport raft.Transport) (*Node, error) {
-
+func NewNode(config *raft.Config, fsm raft.FSM, logStore raft.LogStore, stableStore raft.StableStore, snapshots raft.SnapshotStore, transport raft.Transport) (*Node, error) {
 	r, err := raft.NewRaft(config, fsm, logStore, stableStore, snapshots, transport)
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &Node{r}, nil
 }
 
@@ -70,25 +69,26 @@ func (n *Node) Delete(key string) error {
 
 // Add these methods to your Node struct
 func (n *Node) Join(ctx context.Context, nodeID, raftAddr string) error {
-	if n.State() != hraft.Leader {
+	if n.State() != raft.Leader {
 		return ErrNotLeader
 	}
 
 	f := n.AddVoter(
-		hraft.ServerID(nodeID),
-		hraft.ServerAddress(raftAddr),
+		raft.ServerID(nodeID),
+		raft.ServerAddress(raftAddr),
 		0, 10*time.Second,
 	)
 	return f.Error()
 }
 
-func (n *Node) Stats() *StatsResponse {
-	return &StatsResponse{
-		Leader:      string(n.Leader()),
-		Nodes:       n.getClusterNodes(),
-		CommitIndex: n.CommitIndex(),
-		LastApplied: n.LastApplied(),
+func (n *Node) Stats() map[string]any {
+	stats := map[string]any{
+		"leader":        string(n.Leader()),
+		"nodes":         n.getClusterNodes(),
+		"commit_index":  n.CommitIndex(),
+		"last_applied":  n.LastIndex(),
 	}
+	return stats
 }
 
 func (n *Node) getClusterNodes() []string {
