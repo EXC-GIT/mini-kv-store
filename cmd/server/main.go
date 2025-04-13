@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/exc-git/mini-kv-store/configs"
-	"github.com/exc-git/mini-kv-store/internal/store"
-	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
-	"github.com/hashicorp/raft"
 	raft2 "github.com/exc-git/mini-kv-store/internal/raft"
+	"github.com/exc-git/mini-kv-store/internal/store"
+	"github.com/exc-git/mini-kv-store/internal/transport/rpc"
+	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
 
 func main() {
@@ -45,6 +46,11 @@ func main() {
 		log.Fatal("Failed to create snapshot store:", err)
 	}
 
+	// Check if the Raft data files exist
+	logStorePath := filepath.Join(cfg.DataDir, "raft-log.db")
+	stableStorePath := filepath.Join(cfg.DataDir, "raft-stable.db")
+	logStoreExists := fileExists(logStorePath)
+	stableStoreExists := fileExists(stableStorePath)
 	// Create hraft transport
 	addr, err := net.ResolveTCPAddr("tcp", cfg.BindAddr)
 	if err != nil {
@@ -73,17 +79,32 @@ func main() {
 		log.Fatalf("Failed to create raft node: %v", err)
 	}
 
-	configuration := raft.Configuration{Servers: []raft.Server{{ID: raft.ServerID(cfg.NodeID), Address: transport.LocalAddr()}},
-	}
-	if cfg.JoinAddr == "" {
+	// Start gRPC server
+	go func() {
+		if err := rpc.StartServer(cfg.RPCAddr, raftNode, store); err != nil {
+			log.Fatalf("Failed to start gRPC server: %v", err)
+		}
+	}()
+
+	configuration := raft.Configuration{Servers: []raft.Server{{ID: raft.ServerID(cfg.NodeID), Address: transport.LocalAddr()}}}
+
+	if cfg.JoinAddr == "" && !logStoreExists && !stableStoreExists {
+		// Bootstrap only if data files do not exist
+		log.Println("Bootstrapping new cluster...")
 		f := raftNode.BootstrapCluster(configuration)
 		if err := f.Error(); err != nil {
 			log.Fatal("Failed to bootstrap cluster:", err)
 		}
-	} else {
-		time.Sleep(5 * time.Second)
+	} else if cfg.JoinAddr != "" {
+		log.Println("Joining an existing cluster...")
+		time.Sleep(10 * time.Second)
 		if err := joinCluster(cfg.JoinAddr, cfg.NodeID, cfg.BindAddr); err != nil {
 			log.Printf("Failed to join cluster: %v", err)
+		}
+	} else {
+		if logStoreExists || stableStoreExists {
+			log.Println("Found existing Raft state, skipping bootstrap...")
+
 		}
 	}
 
@@ -95,16 +116,18 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
+	log.Println("Shutting down...")
 	if err := raftNode.Shutdown().Error(); err != nil {
 		log.Printf("Error shutting down raft node: %v", err)
 	}
+	log.Println("Server stopped.")
 }
 
 func joinCluster(joinAddr, nodeID, raftAddr string) error {
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://%s/join?node_id=%s&raft_addr=%s", joinAddr, nodeID, raftAddr))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to send join request to cluster, %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -130,4 +153,9 @@ func startAdminServer(raftNode *raft2.Node, addr string) {
 
 	log.Println("Admin server running on", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

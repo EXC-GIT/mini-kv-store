@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	serverAddr := flag.String("server", "localhost:9090", "Server RPC address")
+	serverAddr := flag.String("server", "localhost:9091", "Server RPC address")
 	flag.Parse()
 
 	client, err := rpc.NewClient(*serverAddr)
